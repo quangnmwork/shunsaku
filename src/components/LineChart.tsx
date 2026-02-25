@@ -19,13 +19,13 @@ export function LineChart({ data, valueKey, color = colors.red, catalogH, initOd
     );
   }
 
-  const showValueLabels = valueKey === 'kmpl';
-  const w = 311;
-  const h = showValueLabels ? 150 : 130;
-  const pL = 32;
+  const isKmpl = valueKey === 'kmpl';
+  const w = 343;
+  const h = isKmpl ? 160 : 130;
+  const pL = 34;
   const pB = 22;
-  const pT = showValueLabels ? 24 : 14;
-  const pR = 10;
+  const pT = isKmpl ? 28 : 14;
+  const pR = 12;
   const iW = w - pL - pR;
   const iH = h - pT - pB;
   const baseline = pT + iH;
@@ -34,6 +34,7 @@ export function LineChart({ data, valueKey, color = colors.red, catalogH, initOd
   if (catalogH) allVals.push(catalogH);
 
   const avgH = (() => {
+    if (data.length < 5) return null;
     const totalOdo = data[data.length - 1]?.odo;
     const firstOdo = initOdo ?? data[0]?.odo;
     const totalL = data.reduce((s, d) => s + (d.fuel || 0), 0);
@@ -42,47 +43,43 @@ export function LineChart({ data, valueKey, color = colors.red, catalogH, initOd
   })();
   if (avgH != null) allVals.push(avgH);
 
-  const minV = Math.min(...allVals) * 0.88;
-  const maxV = Math.max(...allVals) * 1.08;
+  const minV = Math.min(...allVals) * 0.92;
+  const maxV = Math.max(...allVals) * 1.06;
 
   const xS = (i: number) => pL + (i / (data.length - 1 || 1)) * iW;
   const yS = (v: number) => pT + iH - ((v - minV) / (maxV - minV)) * iH;
 
-  const iVals = data.map((d, i) => {
-    if (d[valueKey] != null) return d[valueKey] as number;
-    let pi = i - 1;
-    while (pi >= 0 && data[pi][valueKey] == null) pi--;
-    let ni = i + 1;
-    while (ni < data.length && data[ni][valueKey] == null) ni++;
-    if (pi < 0 || ni >= data.length) return null;
-    return (
-      (data[pi][valueKey] as number) +
-      ((data[ni][valueKey] as number) - (data[pi][valueKey] as number)) *
-        ((i - pi) / (ni - pi))
-    );
-  });
+  // Build continuous line + area
+  const validPts = data
+    .map((d, i) => ({ i, val: d[valueKey] as number | null }))
+    .filter((p) => p.val != null) as { i: number; val: number }[];
 
-  const missingRanges: [number, number][] = [];
-  let inGap = false;
-  let gapStart = -1;
-  data.forEach((d, i) => {
-    if (d[valueKey] == null && !inGap) { inGap = true; gapStart = i - 1; }
-    if (d[valueKey] != null && inGap) { inGap = false; missingRanges.push([gapStart, i]); }
-  });
+  const linePts = validPts.map((p) => `${xS(p.i)},${yS(p.val)}`).join(' ');
+  const areaPts = validPts.length >= 2
+    ? `${xS(validPts[0].i)},${baseline} ${linePts} ${xS(validPts[validPts.length - 1].i)},${baseline}`
+    : '';
 
-  const segments: number[][] = [];
-  let cur: number[] = [];
-  data.forEach((d, i) => {
-    if (d[valueKey] != null) cur.push(i);
-    else {
-      if (cur.length >= 2) segments.push([...cur]);
-      cur = [];
-    }
-  });
-  if (cur.length >= 1) segments.push(cur);
+  // Value labels with anti-overlap
+  const labelPositions: { x: number; y: number; text: string; fill: string }[] = [];
+  if (isKmpl) {
+    data.forEach((d, i) => {
+      const val = d[valueKey] as number | null;
+      if (val == null || d.isEstimated) return;
+      const cx = xS(i);
+      const baseY = yS(val) - 12;
+      let finalY = baseY;
+      for (const prev of labelPositions) {
+        if (Math.abs(cx - prev.x) < 30 && Math.abs(finalY - prev.y) < 10) {
+          finalY = prev.y - 10;
+        }
+      }
+      labelPositions.push({ x: cx, y: finalY, text: val % 1 === 0 ? String(val) : val.toFixed(2), fill: colors.dark });
+    });
+  }
 
   return (
     <svg width="100%" viewBox={`0 0 ${w} ${h}`}>
+      {/* Grid */}
       {[minV, (minV + maxV) / 2, maxV].map((v, i) => (
         <g key={i}>
           <line x1={pL} x2={w - pR} y1={yS(v)} y2={yS(v)} stroke="#EEE" strokeWidth={1} />
@@ -92,75 +89,53 @@ export function LineChart({ data, valueKey, color = colors.red, catalogH, initOd
         </g>
       ))}
 
+      {/* avg(H) green dashed */}
       {avgH != null && (
-        <g>
-          <line x1={pL} x2={w - pR} y1={yS(avgH)} y2={yS(avgH)} stroke="#2E7D32" strokeWidth={1.5} strokeDasharray="4,2" />
-          <text x={pL - 4} y={yS(avgH) + 4} fontSize={8} fill="#2E7D32" textAnchor="end" fontWeight="700">{avgH}</text>
-        </g>
+        <line x1={pL} x2={w - pR} y1={yS(avgH)} y2={yS(avgH)} stroke={colors.green} strokeWidth={1.2} strokeDasharray="4,2" />
       )}
 
+      {/* Catalog blue dashed */}
       {catalogH != null && (
-        <g>
-          <line x1={pL} x2={w - pR} y1={yS(catalogH)} y2={yS(catalogH)} stroke={colors.blue} strokeWidth={1.5} strokeDasharray="6,3" />
-          <text x={pL - 4} y={yS(catalogH) + 4} fontSize={8} fill={colors.blue} textAnchor="end" fontWeight="700">{catalogH}</text>
-        </g>
+        <line x1={pL} x2={w - pR} y1={yS(catalogH)} y2={yS(catalogH)} stroke={colors.blue} strokeWidth={2} strokeDasharray="8,4" />
       )}
 
-      {missingRanges.map(([from, to], ri) => {
-        const pts: string[] = [];
-        for (let i = from; i <= to; i++) {
-          if (iVals[i] != null) pts.push(`${xS(i)},${yS(iVals[i]!)}`);
-        }
-        if (pts.length < 2) return null;
-        const area = `${xS(from)},${baseline} ${pts.join(' ')} ${xS(to)},${baseline}`;
-        return (
-          <g key={`gap-${ri}`}>
-            <polygon points={area} fill="#BDBDBD" fillOpacity={0.2} />
-            <polyline points={pts.join(' ')} fill="none" stroke="#BDBDBD" strokeWidth={1.5} strokeDasharray="4,3" />
-          </g>
-        );
-      })}
+      {/* Area fill */}
+      {areaPts && <polygon points={areaPts} fill={color} fillOpacity={0.08} />}
 
-      {segments.map((idxs, si) => {
-        const pts = idxs.map((i) => `${xS(i)},${yS(data[i][valueKey] as number)}`).join(' ');
-        const area = `${xS(idxs[0])},${baseline} ${pts} ${xS(idxs[idxs.length - 1])},${baseline}`;
-        return (
-          <g key={`seg-${si}`}>
-            <polygon points={area} fill={color} fillOpacity={0.1} />
-            <polyline points={pts} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" />
-          </g>
-        );
-      })}
+      {/* Line */}
+      {validPts.length >= 2 && (
+        <polyline points={linePts} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+      )}
 
+      {/* Value labels (actual only) */}
+      {labelPositions.map((lp, i) => (
+        <text key={`label-${i}`} x={lp.x} y={lp.y} fontSize={8} fill={lp.fill} textAnchor="middle" fontWeight="700">
+          {lp.text}
+        </text>
+      ))}
+
+      {/* Data points */}
       {data.map((d, i) => {
         const val = d[valueKey] as number | null;
-        if (val == null) {
-          return (
-            <g key={i}>
-              <text x={xS(i)} y={h - 13} fontSize={8} fill={colors.warn} textAnchor="middle">⚠</text>
-              <text x={xS(i)} y={h - 4} fontSize={7} fill={colors.warn} textAnchor="middle">{d.date.slice(5, 10)}</text>
-            </g>
-          );
-        }
+        if (val == null) return null;
+        const cx = xS(i);
+        const cy = yS(val);
+        const isEst = d.isEstimated;
+
         return (
           <g key={i}>
-            {showValueLabels && (
-              <text
-                x={xS(i)}
-                y={yS(val) - 10}
-                fontSize={7}
-                fill={d.isEstimated ? colors.blue : colors.dark}
-                textAnchor="middle"
-                fontWeight="700"
-              >
-                {typeof val === 'number' ? val.toFixed(val % 1 === 0 ? 0 : 2) : val}
+            {isEst && (
+              <circle cx={cx} cy={cy} r={8} fill={colors.blue} fillOpacity={0.15} />
+            )}
+            <circle cx={cx} cy={cy} r={4} fill={isEst ? colors.blue : color} stroke={colors.white} strokeWidth={1.5} />
+            {isEst && isKmpl && (
+              <text x={cx} y={cy - 12} fontSize={7} fill={colors.blue} textAnchor="middle" fontWeight="700">
+                {val % 1 === 0 ? val : val.toFixed(2)}
               </text>
             )}
-            {d.isEstimated && (
-              <circle cx={xS(i)} cy={yS(val)} r={8} fill={colors.blue} fillOpacity={0.15} />
-            )}
-            <circle cx={xS(i)} cy={yS(val)} r={4} fill={d.isEstimated ? colors.blue : color} stroke={colors.white} strokeWidth={1.5} />
-            <text x={xS(i)} y={h - 4} fontSize={7} fill={colors.gray} textAnchor="middle">{d.date.slice(5, 10)}</text>
+            <text x={cx} y={h - 4} fontSize={7} fill={colors.gray} textAnchor="middle">
+              {d.date.slice(5, 10)}
+            </text>
           </g>
         );
       })}

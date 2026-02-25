@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { SCREENS, type Screen, type BikeModel } from './constants';
 import type { HistoryEntry, RecordDraft } from './types';
-import { nowStr, isAnomalous, makeInitHistory } from './utils';
+import { nowStr, isAnomalous, makeInitHistory, makeDemoData, type DemoScenario } from './utils';
 import { Setup1 } from './screens/Setup1';
 import { Setup2 } from './screens/Setup2';
 import { Setup3 } from './screens/Setup3';
@@ -17,6 +17,7 @@ export default function App() {
   const [bike, setBike] = useState<BikeModel | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [draft, setDraft] = useState<RecordDraft>({});
+  const [activeScenario, setActiveScenario] = useState<DemoScenario>('simple');
 
   const catalogH = bike?.catalog ?? 50;
   const lastEntry = history.length ? history[history.length - 1] : null;
@@ -77,8 +78,17 @@ export default function App() {
 
   const handleSetupDone = (bikeData: BikeModel) => {
     setBike(bikeData);
-    setHistory(makeInitHistory(bikeData.catalog));
+    const { initOdo: demoOdo, history: demoHistory } = makeDemoData(activeScenario, bikeData.catalog);
+    setInitOdo(demoOdo);
+    setHistory(demoHistory);
     go(SCREENS.DASHBOARD);
+  };
+
+  const handleChangeScenario = (scenario: DemoScenario) => {
+    setActiveScenario(scenario);
+    const { initOdo: demoOdo, history: demoHistory } = makeDemoData(scenario, catalogH);
+    setInitOdo(demoOdo);
+    setHistory(demoHistory);
   };
 
   return (
@@ -107,8 +117,10 @@ export default function App() {
           initOdo={initOdo || 1000}
           catalogH={catalogH}
           bikeName={bike?.name || 'マイバイク'}
+          activeScenario={activeScenario}
           onRecord={() => { setDraft({}); go(SCREENS.RECORD_1); }}
           onDelete={handleDelete}
+          onChangeScenario={handleChangeScenario}
         />
       )}
       {screen === SCREENS.RECORD_1 && (

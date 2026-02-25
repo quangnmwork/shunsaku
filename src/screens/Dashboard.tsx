@@ -5,7 +5,7 @@ import { Btn } from "../components/Btn";
 import { TabBar } from "../components/TabBar";
 import { LineChart } from "../components/LineChart";
 import { MonthBarChart } from "../components/MonthBarChart";
-import { groupByMonth, calcAvgH } from "../utils";
+import { groupByMonth, calcAvgH, DEMO_SCENARIOS, makeDemoData, type DemoScenario } from "../utils";
 import type { HistoryEntry } from "../types";
 
 interface DashboardProps {
@@ -13,8 +13,10 @@ interface DashboardProps {
   initOdo: number;
   catalogH: number;
   bikeName: string;
+  activeScenario: DemoScenario;
   onRecord: () => void;
   onDelete: (id: number) => void;
+  onChangeScenario: (scenario: DemoScenario) => void;
 }
 
 function DeleteModal({
@@ -105,11 +107,9 @@ function ChartLegend({
       {[
         { label: "実測値", type: "dot" as const, clr: colors.red },
         { label: "参考値（推定）", type: "dot" as const, clr: colors.blue },
-        {
-          label: `avg(H)${avgH != null ? ` (${avgH})` : ""}`,
-          type: "line" as const,
-          clr: colors.green,
-        },
+        ...(avgH != null
+          ? [{ label: `avg(H) (${avgH})`, type: "line" as const, clr: colors.green }]
+          : []),
         {
           label: `カタログ値 (${catalogH})`,
           type: "line" as const,
@@ -247,6 +247,124 @@ function FuelBreakdown({
   );
 }
 
+function ScenarioDataTable({ scenario, catalogH }: { scenario: DemoScenario; catalogH: number }) {
+  const { initOdo, history } = makeDemoData(scenario, catalogH);
+  const totalFuel = history.reduce((s, e) => s + e.fuel, 0);
+  const avgH = (history[history.length - 1].odo - initOdo) / totalFuel;
+
+  return (
+    <div style={{ marginTop: 12, overflowX: "auto" }}>
+      <table style={{ width: "100%", fontSize: 10, borderCollapse: "collapse", color: colors.dark }}>
+        <thead>
+          <tr style={{ borderBottom: `2px solid ${colors.light}` }}>
+            {["日付", "ODO", "ΔODO", "L", "H", "種別"].map((h) => (
+              <th key={h} style={{ padding: "4px 3px", textAlign: "right", fontWeight: 700, color: colors.gray }}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          <tr style={{ borderBottom: `1px solid ${colors.light}`, color: colors.gray }}>
+            <td style={{ padding: "3px" }}>initial</td>
+            <td style={{ padding: "3px", textAlign: "right" }}>{initOdo}</td>
+            <td colSpan={4} style={{ padding: "3px", textAlign: "right", fontSize: 9 }}>
+              カタログ={catalogH}
+            </td>
+          </tr>
+          {history.map((r, i) => {
+            const prevOdo = i > 0 ? history[i - 1].odo : initOdo;
+            const delta = r.odo - prevOdo;
+            return (
+              <tr
+                key={r.id}
+                style={{
+                  borderBottom: `1px solid ${colors.light}`,
+                  background: r.isEstimated ? "#F3F8FF" : "transparent",
+                }}
+              >
+                <td style={{ padding: "3px", whiteSpace: "nowrap" }}>{r.date.slice(5, 10)}</td>
+                <td style={{ padding: "3px", textAlign: "right" }}>{r.odo}</td>
+                <td style={{ padding: "3px", textAlign: "right" }}>{delta}</td>
+                <td style={{ padding: "3px", textAlign: "right", color: r.isEstimated ? colors.blue : "inherit" }}>
+                  {r.fuel.toFixed(2)}
+                </td>
+                <td style={{ padding: "3px", textAlign: "right", fontWeight: 700 }}>
+                  {r.kmpl != null ? r.kmpl.toFixed(2) : "--"}
+                </td>
+                <td style={{ padding: "3px", textAlign: "right", fontSize: 9 }}>
+                  {r.isEstimated ? "推定" : "実測"}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div style={{ fontSize: 10, color: colors.green, fontWeight: 700, marginTop: 6, textAlign: "right" }}>
+        avg(H) = ({history[history.length - 1].odo}−{initOdo}) ÷ {totalFuel.toFixed(2)} = {avgH.toFixed(2)} km/L
+      </div>
+    </div>
+  );
+}
+
+function ScenarioModal({
+  active,
+  catalogH,
+  onSelect,
+  onClose,
+}: {
+  active: DemoScenario;
+  catalogH: number;
+  onSelect: (s: DemoScenario) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: "rgba(0,0,0,0.5)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 100,
+      }}
+    >
+      <div style={{ background: colors.white, borderRadius: 12, padding: 24, margin: 20, maxWidth: 360, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: colors.dark, marginBottom: 16 }}>
+          📊 デモデータ切替
+        </div>
+        {DEMO_SCENARIOS.map(({ id, label, desc }) => (
+          <div
+            key={id}
+            onClick={() => onSelect(id)}
+            style={{
+              padding: 14,
+              borderRadius: 8,
+              marginBottom: 8,
+              cursor: "pointer",
+              border: `2px solid ${active === id ? colors.red : colors.light}`,
+              background: active === id ? "#FFF0F0" : colors.white,
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 14, color: active === id ? colors.red : colors.dark }}>
+              {label}
+            </div>
+            <div style={{ fontSize: 12, color: colors.gray, marginTop: 4 }}>{desc}</div>
+            {active === id && <ScenarioDataTable scenario={id} catalogH={catalogH} />}
+          </div>
+        ))}
+        <div style={{ marginTop: 8 }}>
+          <Btn secondary onClick={onClose}>閉じる</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MonthlyBreakdown({
   months,
   onDelete,
@@ -362,14 +480,17 @@ export function Dashboard({
   initOdo,
   catalogH,
   bikeName,
+  activeScenario,
   onRecord,
   onDelete,
+  onChangeScenario,
 }: DashboardProps) {
   const [tab, setTab] = useState("燃費");
   const [confirmDelete, setConfirmDelete] = useState<{
     id: number;
     isLatest: boolean;
   } | null>(null);
+  const [showScenario, setShowScenario] = useState(false);
 
   const avgH = calcAvgH(history, initOdo);
   const totalCost = history.reduce((s, h) => s + (h.amount || 0), 0);
@@ -396,6 +517,7 @@ export function Dashboard({
   };
 
   return (
+    <>
     <Shell title={`${bikeName} 燃費記録`}>
       {confirmDelete && (
         <DeleteModal
@@ -576,5 +698,40 @@ export function Dashboard({
 
       <Btn onClick={onRecord}>＋ 給油を記録する</Btn>
     </Shell>
+
+    {/* Floating demo button — outside Shell to avoid overflow clipping */}
+    <button
+      onClick={() => setShowScenario(true)}
+      style={{
+        position: "fixed",
+        bottom: 24,
+        right: 24,
+        width: 48,
+        height: 48,
+        borderRadius: "50%",
+        background: colors.dark,
+        color: colors.white,
+        border: "none",
+        cursor: "pointer",
+        fontSize: 20,
+        boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 50,
+      }}
+    >
+      📊
+    </button>
+
+    {showScenario && (
+      <ScenarioModal
+        active={activeScenario}
+        catalogH={catalogH}
+        onSelect={(s) => { onChangeScenario(s); setShowScenario(false); }}
+        onClose={() => setShowScenario(false)}
+      />
+    )}
+    </>
   );
 }

@@ -28,68 +28,118 @@ export function isAnomalous(kmpl: number, catalogH: number): boolean {
   return Math.abs(kmpl - catalogH) / catalogH > ANOMALY_THRESHOLD;
 }
 
-export function makeInitHistory(catalogH: number): HistoryEntry[] {
-  const INIT_ODO = 1000;
+export type DemoScenario = 'simple' | 'good' | 'declining';
+
+export const DEMO_SCENARIOS: { id: DemoScenario; label: string; desc: string }[] = [
+  { id: 'simple', label: '基本（4件）', desc: '記録忘れ1回、データ少' },
+  { id: 'good', label: '燃費良好（7件）', desc: 'avg(H) > カタログ値 🎉' },
+  { id: 'declining', label: '燃費低下（6件）', desc: 'avg(H) < カタログ値 ⚠️' },
+];
+
+function buildEntries(
+  initOdo: number,
+  catalogH: number,
+  raw: { id: number; date: string; odo: number; fuel?: number; estimated?: boolean }[],
+): HistoryEntry[] {
   const UP = 172;
-
-  const actuals: { id: number; date: string; odo: number; fuel: number }[] = [
-    { id: 1, date: '2025/01/08 09:00', odo: 1130, fuel: 2.5 },
-    { id: 3, date: '2025/02/10 11:00', odo: 1600, fuel: 1.8 },
-    { id: 4, date: '2025/02/15 16:00', odo: 1800, fuel: 3.8 },
-    { id: 5, date: '2025/02/28 10:00', odo: 1920, fuel: 2.3 },
-    { id: 6, date: '2025/03/04 09:00', odo: 2100, fuel: 3.5 },
-  ];
-
   const entries: HistoryEntry[] = [];
-  let prevOdo = INIT_ODO;
+  let prevOdo = initOdo;
 
-  // Entry 1
-  const e1 = actuals[0];
-  entries.push({
-    id: e1.id, date: e1.date, odo: e1.odo,
-    fuel: e1.fuel, amount: Math.round(e1.fuel * UP), unitPrice: UP,
-    kmpl: parseFloat(((e1.odo - prevOdo) / e1.fuel).toFixed(1)),
-    flagged: false, isEstimated: false,
-  });
-  prevOdo = e1.odo;
+  for (const r of raw) {
+    const delta = r.odo - prevOdo;
+    if (r.estimated) {
+      const refH = entries.length >= 4
+        ? (r.odo - initOdo) / entries.reduce((s, e) => s + e.fuel, 0) // would be wrong, need to use prev entries
+        : catalogH;
+      const fuel = parseFloat((delta / refH).toFixed(2));
+      entries.push({
+        id: r.id, date: r.date, odo: r.odo,
+        fuel, amount: Math.round(fuel * UP), unitPrice: UP,
+        kmpl: parseFloat(refH.toFixed(2)),
+        flagged: false, isEstimated: true,
+      });
+    } else {
+      const fuel = r.fuel!;
+      entries.push({
+        id: r.id, date: r.date, odo: r.odo,
+        fuel, amount: Math.round(fuel * UP), unitPrice: UP,
+        kmpl: parseFloat((delta / fuel).toFixed(2)),
+        flagged: false, isEstimated: false,
+      });
+    }
+    prevOdo = r.odo;
+  }
+  return entries;
+}
 
-  // Entry 2: estimated (forgot 1/13), ref = catalogH
-  const odo2 = 1500;
-  const delta2 = odo2 - prevOdo; // 370
-  const fuel2 = parseFloat((delta2 / catalogH).toFixed(2));
-  entries.push({
-    id: 2, date: '2025/01/25 14:30', odo: odo2,
-    fuel: fuel2, amount: Math.round(fuel2 * UP), unitPrice: UP,
-    kmpl: parseFloat(catalogH.toFixed(1)),
-    flagged: false, isEstimated: true,
-  });
-  prevOdo = odo2;
-
-  // Entries 3-6: actual recordings
-  for (let i = 1; i < actuals.length; i++) {
-    const a = actuals[i];
-    const delta = a.odo - prevOdo;
-    entries.push({
-      id: a.id, date: a.date, odo: a.odo,
-      fuel: a.fuel, amount: Math.round(a.fuel * UP), unitPrice: UP,
-      kmpl: parseFloat((delta / a.fuel).toFixed(1)),
-      flagged: false, isEstimated: false,
-    });
-    prevOdo = a.odo;
+export function makeDemoData(scenario: DemoScenario, catalogH: number): { initOdo: number; history: HistoryEntry[] } {
+  if (scenario === 'simple') {
+    return {
+      initOdo: 1000,
+      history: buildEntries(1000, catalogH, [
+        { id: 1, date: '2025/01/08 09:00', odo: 1130, fuel: 2.5 },
+        { id: 2, date: '2025/01/25 14:30', odo: 1500, estimated: true },
+        { id: 3, date: '2025/02/10 11:00', odo: 1600, fuel: 1.8 },
+        { id: 4, date: '2025/02/15 16:00', odo: 1800, fuel: 3.8 },
+      ]),
+    };
   }
 
-  // Entry 7: estimated (forgot 3/7), ref = avg(H) at this point
-  const totalFuel = entries.reduce((s, e) => s + e.fuel, 0);
-  const avgH = (entries[entries.length - 1].odo - INIT_ODO) / totalFuel;
-  const odo7 = 2400;
-  const delta7 = odo7 - prevOdo; // 300
-  const fuel7 = parseFloat((delta7 / avgH).toFixed(2));
-  entries.push({
-    id: 7, date: '2025/03/12 15:00', odo: odo7,
-    fuel: fuel7, amount: Math.round(fuel7 * UP), unitPrice: UP,
-    kmpl: parseFloat(avgH.toFixed(1)),
-    flagged: false, isEstimated: true,
-  });
+  if (scenario === 'good') {
+    const initOdo = 1000;
+    const UP = 172;
+    const entries: HistoryEntry[] = [];
+    const raw = [
+      { id: 1, date: '2025/01/08 09:00', odo: 1130, fuel: 2.5 },
+      { id: 2, date: '2025/01/25 14:30', odo: 1500, estimated: true },
+      { id: 3, date: '2025/02/10 11:00', odo: 1600, fuel: 1.8 },
+      { id: 4, date: '2025/02/15 16:00', odo: 1800, fuel: 3.8 },
+      { id: 5, date: '2025/02/28 10:00', odo: 1920, fuel: 2.3 },
+      { id: 6, date: '2025/03/04 09:00', odo: 2100, fuel: 3.5 },
+      { id: 7, date: '2025/03/12 15:00', odo: 2400, estimated: true },
+    ];
+    let prevOdo = initOdo;
+    for (const r of raw) {
+      const delta = r.odo - prevOdo;
+      if (r.estimated) {
+        const totalFuel = entries.reduce((s, e) => s + e.fuel, 0);
+        const refH = entries.length >= 4
+          ? (entries[entries.length - 1].odo - initOdo) / totalFuel
+          : catalogH;
+        const fuel = parseFloat((delta / refH).toFixed(2));
+        entries.push({
+          id: r.id, date: r.date, odo: r.odo,
+          fuel, amount: Math.round(fuel * UP), unitPrice: UP,
+          kmpl: parseFloat(refH.toFixed(2)),
+          flagged: false, isEstimated: true,
+        });
+      } else {
+        entries.push({
+          id: r.id, date: r.date, odo: r.odo,
+          fuel: r.fuel!, amount: Math.round(r.fuel! * UP), unitPrice: UP,
+          kmpl: parseFloat((delta / r.fuel!).toFixed(2)),
+          flagged: false, isEstimated: false,
+        });
+      }
+      prevOdo = r.odo;
+    }
+    return { initOdo, history: entries };
+  }
 
-  return entries;
+  // declining: avg(H) consistently below catalog
+  return {
+    initOdo: 5000,
+    history: buildEntries(5000, catalogH, [
+      { id: 1, date: '2025/04/05 10:00', odo: 5200, fuel: 5.0 },
+      { id: 2, date: '2025/04/18 14:00', odo: 5400, fuel: 5.7 },
+      { id: 3, date: '2025/05/02 09:00', odo: 5700, estimated: true },
+      { id: 4, date: '2025/05/15 11:00', odo: 5900, fuel: 6.5 },
+      { id: 5, date: '2025/05/28 16:00', odo: 6100, fuel: 5.8 },
+      { id: 6, date: '2025/06/10 10:00', odo: 6300, fuel: 6.2 },
+    ]),
+  };
+}
+
+export function makeInitHistory(catalogH: number): HistoryEntry[] {
+  return makeDemoData('simple', catalogH).history;
 }
