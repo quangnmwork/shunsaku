@@ -106,7 +106,7 @@ function ChartLegend({
     <div style={{ display: "flex", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
       {[
         { label: "実測値", type: "dot" as const, clr: colors.red },
-        { label: "参考値（推定）", type: "dot" as const, clr: colors.blue },
+        { label: "参考値（推定）", type: "dot" as const, clr: colors.gray },
         ...(avgH != null
           ? [{ label: `avg(H) (${avgH})`, type: "line" as const, clr: colors.green }]
           : []),
@@ -126,7 +126,6 @@ function ChartLegend({
                 width: 16,
                 height: 2,
                 background: clr,
-                borderTop: `2px dashed ${clr}`,
               }}
             />
           ) : (
@@ -191,7 +190,7 @@ function FuelBreakdown({
                   {r.isEstimated && (
                     <span
                       style={{
-                        color: colors.blue,
+                        color: colors.gray,
                         fontSize: 11,
                         marginLeft: 4,
                       }}
@@ -210,7 +209,7 @@ function FuelBreakdown({
                     style={{
                       fontSize: 18,
                       fontWeight: 700,
-                      color: r.isEstimated ? colors.blue : colors.red,
+                      color: r.isEstimated ? colors.gray : colors.red,
                     }}
                   >
                     {r.kmpl != null ? r.kmpl.toFixed(1) : "--"}
@@ -286,7 +285,7 @@ function ScenarioDataTable({ scenario, catalogH }: { scenario: DemoScenario; cat
                 <td style={{ padding: "3px", whiteSpace: "nowrap" }}>{r.date.slice(5, 10)}</td>
                 <td style={{ padding: "3px", textAlign: "right" }}>{r.odo}</td>
                 <td style={{ padding: "3px", textAlign: "right" }}>{delta}</td>
-                <td style={{ padding: "3px", textAlign: "right", color: r.isEstimated ? colors.blue : "inherit" }}>
+                <td style={{ padding: "3px", textAlign: "right", color: r.isEstimated ? colors.gray : "inherit" }}>
                   {r.fuel.toFixed(2)}
                 </td>
                 <td style={{ padding: "3px", textAlign: "right", fontWeight: 700 }}>
@@ -406,7 +405,7 @@ function MonthlyBreakdown({
                     {r.date.slice(11)}
                   </div>
                   <div style={{ fontSize: 11, color: colors.gray }}>
-                    {r.fuel?.toFixed(1)} L {r.isEstimated ? "🔵 参考値" : ""}
+                    {r.fuel?.toFixed(1)} L {r.isEstimated ? "⚪ 参考値" : ""}
                     {r.flagged ? "⚠️ ODOのみ" : ""}
                   </div>
                 </div>
@@ -432,7 +431,7 @@ function MonthlyBreakdown({
                       <div
                         style={{
                           fontSize: 11,
-                          color: r.isEstimated ? colors.blue : colors.gray,
+                          color: colors.gray,
                         }}
                       >
                         {r.kmpl.toFixed(1)} km/L

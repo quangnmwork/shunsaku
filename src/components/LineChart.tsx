@@ -89,14 +89,14 @@ export function LineChart({ data, valueKey, color = colors.red, catalogH, initOd
         </g>
       ))}
 
-      {/* avg(H) green dashed */}
+      {/* avg(H) green solid */}
       {avgH != null && (
-        <line x1={pL} x2={w - pR} y1={yS(avgH)} y2={yS(avgH)} stroke={colors.green} strokeWidth={1.2} strokeDasharray="4,2" />
+        <line x1={pL} x2={w - pR} y1={yS(avgH)} y2={yS(avgH)} stroke={colors.green} strokeWidth={0.8} />
       )}
 
-      {/* Catalog blue dashed */}
+      {/* Catalog blue solid */}
       {catalogH != null && (
-        <line x1={pL} x2={w - pR} y1={yS(catalogH)} y2={yS(catalogH)} stroke={colors.blue} strokeWidth={2} strokeDasharray="8,4" />
+        <line x1={pL} x2={w - pR} y1={yS(catalogH)} y2={yS(catalogH)} stroke={colors.blue} strokeWidth={0.8} />
       )}
 
       {/* Area fill */}
@@ -125,11 +125,11 @@ export function LineChart({ data, valueKey, color = colors.red, catalogH, initOd
         return (
           <g key={i}>
             {isEst && (
-              <circle cx={cx} cy={cy} r={8} fill={colors.blue} fillOpacity={0.15} />
+              <circle cx={cx} cy={cy} r={8} fill={colors.gray} fillOpacity={0.15} />
             )}
-            <circle cx={cx} cy={cy} r={4} fill={isEst ? colors.blue : color} stroke={colors.white} strokeWidth={1.5} />
+            <circle cx={cx} cy={cy} r={4} fill={isEst ? colors.gray : color} stroke={colors.white} strokeWidth={1.5} />
             {isEst && isKmpl && (
-              <text x={cx} y={cy - 12} fontSize={7} fill={colors.blue} textAnchor="middle" fontWeight="700">
+              <text x={cx} y={cy - 12} fontSize={7} fill={colors.gray} textAnchor="middle" fontWeight="700">
                 {val % 1 === 0 ? val : val.toFixed(2)}
               </text>
             )}

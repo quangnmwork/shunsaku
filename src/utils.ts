@@ -28,10 +28,11 @@ export function isAnomalous(kmpl: number, catalogH: number): boolean {
   return Math.abs(kmpl - catalogH) / catalogH > ANOMALY_THRESHOLD;
 }
 
-export type DemoScenario = 'simple' | 'good' | 'declining';
+export type DemoScenario = 'simple' | 'neutral' | 'good' | 'declining';
 
 export const DEMO_SCENARIOS: { id: DemoScenario; label: string; desc: string }[] = [
   { id: 'simple', label: '基本（4件）', desc: '記録忘れ1回、データ少' },
+  { id: 'neutral', label: '収集中（6件）', desc: 'まだデータ不足、最終値=カタログ値' },
   { id: 'good', label: '燃費良好（7件）', desc: 'avg(H) > カタログ値 🎉' },
   { id: 'declining', label: '燃費低下（6件）', desc: 'avg(H) < カタログ値 ⚠️' },
 ];
@@ -48,14 +49,11 @@ function buildEntries(
   for (const r of raw) {
     const delta = r.odo - prevOdo;
     if (r.estimated) {
-      const refH = entries.length >= 4
-        ? (r.odo - initOdo) / entries.reduce((s, e) => s + e.fuel, 0) // would be wrong, need to use prev entries
-        : catalogH;
-      const fuel = parseFloat((delta / refH).toFixed(2));
+      const fuel = parseFloat((delta / catalogH).toFixed(2));
       entries.push({
         id: r.id, date: r.date, odo: r.odo,
         fuel, amount: Math.round(fuel * UP), unitPrice: UP,
-        kmpl: parseFloat(refH.toFixed(2)),
+        kmpl: catalogH,
         flagged: false, isEstimated: true,
       });
     } else {
@@ -85,6 +83,20 @@ export function makeDemoData(scenario: DemoScenario, catalogH: number): { initOd
     };
   }
 
+  if (scenario === 'neutral') {
+    return {
+      initOdo: 1000,
+      history: buildEntries(1000, catalogH, [
+        { id: 1, date: '2025/01/08 09:00', odo: 1130, fuel: 2.5 },
+        { id: 2, date: '2025/01/25 14:30', odo: 1500, estimated: true },
+        { id: 3, date: '2025/02/10 11:00', odo: 1600, fuel: 1.8 },
+        { id: 4, date: '2025/02/15 16:00', odo: 1800, fuel: 3.8 },
+        { id: 5, date: '2025/02/28 10:00', odo: 1920, fuel: 2.3 },
+        { id: 6, date: '2025/03/04 09:00', odo: 2100, estimated: true },
+      ]),
+    };
+  }
+
   if (scenario === 'good') {
     const initOdo = 1000;
     const UP = 172;
@@ -102,15 +114,11 @@ export function makeDemoData(scenario: DemoScenario, catalogH: number): { initOd
     for (const r of raw) {
       const delta = r.odo - prevOdo;
       if (r.estimated) {
-        const totalFuel = entries.reduce((s, e) => s + e.fuel, 0);
-        const refH = entries.length >= 4
-          ? (entries[entries.length - 1].odo - initOdo) / totalFuel
-          : catalogH;
-        const fuel = parseFloat((delta / refH).toFixed(2));
+        const fuel = parseFloat((delta / catalogH).toFixed(2));
         entries.push({
           id: r.id, date: r.date, odo: r.odo,
           fuel, amount: Math.round(fuel * UP), unitPrice: UP,
-          kmpl: parseFloat(refH.toFixed(2)),
+          kmpl: catalogH,
           flagged: false, isEstimated: true,
         });
       } else {
