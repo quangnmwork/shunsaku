@@ -6,10 +6,9 @@ interface LineChartProps {
   valueKey: keyof HistoryEntry;
   color?: string;
   catalogH?: number;
-  initOdo?: number;
 }
 
-export function LineChart({ data, valueKey, color = colors.red, catalogH, initOdo }: LineChartProps) {
+export function LineChart({ data, valueKey, color = colors.red, catalogH }: LineChartProps) {
   const valid = data.filter((d) => d[valueKey] != null);
   if (valid.length < 1) {
     return (
@@ -32,16 +31,6 @@ export function LineChart({ data, valueKey, color = colors.red, catalogH, initOd
 
   const allVals = [...data.map((d) => d[valueKey] as number).filter(Boolean)];
   if (catalogH) allVals.push(catalogH);
-
-  const avgH = (() => {
-    if (data.length < 5) return null;
-    const totalOdo = data[data.length - 1]?.odo;
-    const firstOdo = initOdo ?? data[0]?.odo;
-    const totalL = data.reduce((s, d) => s + (d.fuel || 0), 0);
-    if (!totalL || !totalOdo || !firstOdo) return null;
-    return parseFloat(((totalOdo - firstOdo) / totalL).toFixed(1));
-  })();
-  if (avgH != null) allVals.push(avgH);
 
   const minV = Math.min(...allVals) * 0.92;
   const maxV = Math.max(...allVals) * 1.06;
@@ -88,11 +77,6 @@ export function LineChart({ data, valueKey, color = colors.red, catalogH, initOd
           </text>
         </g>
       ))}
-
-      {/* avg(H) green dashed */}
-      {avgH != null && (
-        <line x1={pL} x2={w - pR} y1={yS(avgH)} y2={yS(avgH)} stroke={colors.green} strokeWidth={1.2} strokeDasharray="4,2" />
-      )}
 
       {/* Catalog blue dashed */}
       {catalogH != null && (

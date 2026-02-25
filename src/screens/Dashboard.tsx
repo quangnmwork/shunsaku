@@ -5,7 +5,7 @@ import { Btn } from "../components/Btn";
 import { TabBar } from "../components/TabBar";
 import { LineChart } from "../components/LineChart";
 import { MonthBarChart } from "../components/MonthBarChart";
-import { groupByMonth, calcAvgH, DEMO_SCENARIOS, makeDemoData, type DemoScenario } from "../utils";
+import { groupByMonth, DEMO_SCENARIOS, makeDemoData, type DemoScenario } from "../utils";
 import type { HistoryEntry } from "../types";
 
 interface DashboardProps {
@@ -95,21 +95,12 @@ function DeleteModal({
   );
 }
 
-function ChartLegend({
-  catalogH,
-  avgH,
-}: {
-  catalogH: number;
-  avgH: number | null;
-}) {
+function ChartLegend({ catalogH }: { catalogH: number }) {
   return (
     <div style={{ display: "flex", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
       {[
         { label: "実測値", type: "dot" as const, clr: colors.red },
         { label: "参考値（推定）", type: "dot" as const, clr: colors.blue },
-        ...(avgH != null
-          ? [{ label: `avg(H) (${avgH})`, type: "line" as const, clr: colors.green }]
-          : []),
         {
           label: `カタログ値 (${catalogH})`,
           type: "line" as const,
@@ -249,8 +240,6 @@ function FuelBreakdown({
 
 function ScenarioDataTable({ scenario, catalogH }: { scenario: DemoScenario; catalogH: number }) {
   const { initOdo, history } = makeDemoData(scenario, catalogH);
-  const totalFuel = history.reduce((s, e) => s + e.fuel, 0);
-  const avgH = (history[history.length - 1].odo - initOdo) / totalFuel;
 
   return (
     <div style={{ marginTop: 12, overflowX: "auto" }}>
@@ -300,8 +289,8 @@ function ScenarioDataTable({ scenario, catalogH }: { scenario: DemoScenario; cat
           })}
         </tbody>
       </table>
-      <div style={{ fontSize: 10, color: colors.green, fontWeight: 700, marginTop: 6, textAlign: "right" }}>
-        avg(H) = ({history[history.length - 1].odo}−{initOdo}) ÷ {totalFuel.toFixed(2)} = {avgH.toFixed(2)} km/L
+      <div style={{ fontSize: 10, color: colors.blue, fontWeight: 700, marginTop: 6, textAlign: "right" }}>
+        推定基準：カタログ値 {catalogH} km/L（固定）
       </div>
     </div>
   );
@@ -492,24 +481,10 @@ export function Dashboard({
   } | null>(null);
   const [showScenario, setShowScenario] = useState(false);
 
-  const avgH = calcAvgH(history, initOdo);
   const totalCost = history.reduce((s, h) => s + (h.amount || 0), 0);
   const months = groupByMonth(history);
-
-  const catalogStatus =
-    avgH != null && catalogH
-      ? avgH >= catalogH
-        ? {
-            msg: "お客様のバイクは非常に効率よく走れています！🎉",
-            color: colors.green,
-            bg: colors.greenBg,
-          }
-        : {
-            msg: "最近燃費が低下しています。メンテナンスをお勧めします",
-            color: "#E65100",
-            bg: colors.warnBg,
-          }
-      : null;
+  const actualEntries = history.filter((h) => !h.isEstimated && h.kmpl != null);
+  const latestActualH = actualEntries.length > 0 ? actualEntries[actualEntries.length - 1].kmpl : null;
 
   const handleDelete = (id: number) => {
     const idx = history.findIndex((h) => h.id === id);
@@ -541,10 +516,10 @@ export function Dashboard({
         }}
       >
         <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 4 }}>
-          累積平均燃費 avg(H)
+          最新の実燃費
         </div>
         <div style={{ fontSize: 48, fontWeight: 700, lineHeight: 1 }}>
-          {avgH ?? "--"}
+          {latestActualH != null ? latestActualH.toFixed(1) : "--"}
         </div>
         <div style={{ fontSize: 14, opacity: 0.85 }}>km/L</div>
         {catalogH && (
@@ -553,22 +528,6 @@ export function Dashboard({
           </div>
         )}
       </div>
-
-      {catalogStatus && (
-        <div
-          style={{
-            background: catalogStatus.bg,
-            borderRadius: 10,
-            padding: "12px 16px",
-            marginBottom: 12,
-            fontSize: 13,
-            color: catalogStatus.color,
-            fontWeight: 600,
-          }}
-        >
-          {catalogStatus.msg}
-        </div>
-      )}
 
       <div
         style={{
@@ -632,7 +591,6 @@ export function Dashboard({
               valueKey="kmpl"
               color={colors.red}
               catalogH={catalogH}
-              initOdo={initOdo}
             />
             {months.length > 1 && (
               <>
@@ -652,7 +610,7 @@ export function Dashboard({
                 />
               </>
             )}
-            <ChartLegend catalogH={catalogH} avgH={avgH} />
+            <ChartLegend catalogH={catalogH} />
             <FuelBreakdown
               history={history}
               initOdo={initOdo}
