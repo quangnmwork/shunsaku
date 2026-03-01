@@ -1,0 +1,69 @@
+Tóm tắt
+
+Ở app hiện tại thì đã rút gọn thành 2 màn hình thôi để làm MVP.
+
+
+1 màn dashboard 
+
+màn dashboard thì như em thấy nơi ảnh thì có thông số trung bình
+
+
+<chart>
+về biểu đồ thì để dễ hiểu thì:
+
+
+- nếu lúc nhập có man_tank với ko có lần quên thì sẽ hiện dot đỏ
+- có man_tank nhưng mà quên lần trước sẽ mark màu vàng do k đủ data Tính
+- k man_tank nhưng mà k quên thì vẫn hiện chấm màu xanh (cái ni sẽ được dùng cho cái record có man_tank tiếp theo)
+
+</chart>
+
+<table>
+
+ở dưới là table hiển thị ODO,khoảng cách rồi số lít etc 
+lúc e click vào thì ra màn edit (tương tự màn tạo)
+
+mấy cái 記録忘れ hay 部分 sẽ có label cho từng table item tương ứng với chart phía trên.
+
+
+mỗi table_item có nút xoá , bấm vào thì xoá rồi calculate lại thôi show chart thôi (ko remark điểm wasure hay đồ rứa do phức tạp cho sao tính nấy)
+</table>
+
+
+<filter>
+
+tiếp theo tới phần filter
+
+1 tháng ,3,6 tháng ,1 năm
+
+nếu 1 tháng thì show record 1 tháng thôi
+
+còn nếu chọn 3,6,1 năm thì show record theo tháng
+
+lúc e click vào phần table_item (trường hợp filter 3,6,1 năm) ở dưới thì show theo tháng (như chế độ 1 tháng)
+</filter>
+
+
+<input_screen>
+
+phần ni thì chọn ngày giờ giữ nguyên rứa
+
+phần nhập ODO thì tuỳ thuộc vào ngày e chọn
+
+ví dụ như ngày e chọn mà trước đó và sau đó có ODO thì cái ODO của e sẽ có giới hạn range
+
+phần lít thì như bth rứa
+
+2 phần toggle thì : 
+
+nếu toggle off man_tank thì phần toggle_wasure sẽ bị disable . Do dù có nhập thì data không để làm gì ,lưu mất công.
+
+Vậy nên chỉ có 3 trường hợp : 
+
+man_tank = false -> dot màu xanh ở graph
+man_tank = true , có quên thì sẽ là nút X màu cam
+man_tank = true , không quên thì nút đỏ
+</input_screen>
+
+
+Hết rồi đó. 

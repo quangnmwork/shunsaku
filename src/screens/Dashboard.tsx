@@ -1,12 +1,13 @@
-import { useState } from "react";
-import { colors } from "../constants";
-import { Shell } from "../components/Shell";
-import { Btn } from "../components/Btn";
-import { TabBar } from "../components/TabBar";
-import { LineChart } from "../components/LineChart";
-import { MonthBarChart } from "../components/MonthBarChart";
-import { groupByMonth, calcAvgH, DEMO_SCENARIOS, makeDemoData, type DemoScenario } from "../utils";
-import type { HistoryEntry } from "../types";
+import { useState } from 'react';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
+  BarChart, Bar,
+} from 'recharts';
+import { colors } from '../constants';
+import { Shell } from '../components/Shell';
+import { Btn } from '../components/Btn';
+import { calcAvgH, calcMonthlyAvgH, parseDate, DEMO_SCENARIOS, makeDemoData, type DemoScenario } from '../utils';
+import type { HistoryEntry } from '../types';
 
 interface DashboardProps {
   history: HistoryEntry[];
@@ -16,296 +17,497 @@ interface DashboardProps {
   activeScenario: DemoScenario;
   onRecord: () => void;
   onDelete: (id: number) => void;
+  onEdit: (entry: HistoryEntry) => void;
   onChangeScenario: (scenario: DemoScenario) => void;
 }
 
-function DeleteModal({
-  isLatest,
-  onConfirm,
-  onCancel,
+// Honda Go style header with 当月/平均
+function FuelHeader({ monthlyH, avgH }: { monthlyH: number | null; avgH: number | null }) {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr',
+      gap: 1,
+      background: colors.white,
+      borderRadius: 12,
+      overflow: 'hidden',
+      marginBottom: 16,
+    }}>
+      <div style={{ padding: 20, textAlign: 'center', borderRight: `1px solid ${colors.light}` }}>
+        <div style={{ fontSize: 12, color: colors.gray, marginBottom: 8 }}>当月</div>
+        <div style={{ fontSize: 42, fontWeight: 700, color: colors.dark, lineHeight: 1 }}>
+          {monthlyH ?? '—'}
+        </div>
+        <div style={{ fontSize: 14, color: colors.gray, marginTop: 4 }}>km/L</div>
+      </div>
+      <div style={{ padding: 20, textAlign: 'center' }}>
+        <div style={{ fontSize: 12, color: colors.gray, marginBottom: 8 }}>平均</div>
+        <div style={{ fontSize: 42, fontWeight: 700, color: colors.dark, lineHeight: 1 }}>
+          {avgH ?? '—'}
+        </div>
+        <div style={{ fontSize: 14, color: colors.gray, marginTop: 4 }}>km/L</div>
+      </div>
+    </div>
+  );
+}
+
+// Monthly summary card (for 3m+ view)
+function MonthlyCard({
+  data,
+  onClick,
 }: {
-  isLatest: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
+  data: MonthlyData;
+  onClick: () => void;
 }) {
   return (
     <div
+      onClick={onClick}
       style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 100,
-      }}
-    >
-      <div
-        style={{
-          background: colors.white,
+        background: colors.white,
           borderRadius: 12,
-          padding: 24,
-          margin: 20,
-          maxWidth: 320,
+        padding: 16,
+        marginBottom: 12,
+        cursor: 'pointer',
+        transition: 'transform 0.1s',
         }}
       >
-        <div
-          style={{
-            fontSize: 18,
-            fontWeight: 700,
-            color: "#C62828",
+      {/* Month header */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
             marginBottom: 12,
-          }}
-        >
-          ⚠️ 記録を削除しますか？
+      }}>
+        <div style={{
+          width: 32,
+          height: 32,
+          borderRadius: '50%',
+          background: colors.dark,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <span style={{ fontSize: 14 }}>📅</span>
         </div>
-        <div
-          style={{
-            fontSize: 14,
-            color: colors.dark,
-            lineHeight: 1.6,
-            marginBottom: 16,
-          }}
-        >
-          この記録を削除すると燃費の計算に影響が出ます。
-          {!isLatest && (
-            <span
-              style={{
-                color: "#C62828",
-                display: "block",
-                marginTop: 8,
-                fontWeight: 700,
-              }}
-            >
-              最新以外の記録を削除すると、隣接する記録の燃費を自動で再チェックします。
-            </span>
+        <span style={{ fontSize: 15, fontWeight: 600, color: colors.dark }}>{data.label}</span>
+        <span style={{ fontSize: 11, color: colors.gray }}>{data.count}回</span>
+        <span style={{ marginLeft: 'auto', color: colors.gray, fontSize: 14 }}>→</span>
+      </div>
+
+      {/* Data row */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'flex-end',
+        justifyContent: 'space-between',
+        gap: 16,
+      }}>
+        <div style={{ display: 'flex', gap: 20 }}>
+          <div>
+            <div style={{ fontSize: 10, color: colors.gray }}>走行</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: colors.dark, lineHeight: 1.2 }}>
+              {data.totalDistance}<span style={{ fontSize: 11, fontWeight: 400, color: colors.gray }}> km</span>
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: colors.gray }}>給油</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: colors.dark, lineHeight: 1.2 }}>
+              {data.totalFuel.toFixed(1)}<span style={{ fontSize: 11, fontWeight: 400, color: colors.gray }}> L</span>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ textAlign: 'right' }}>
+          {data.avgKmpl != null ? (
+            <div style={{ fontSize: 26, fontWeight: 700, color: colors.red, lineHeight: 1 }}>
+              {data.avgKmpl}
+              <span style={{ fontSize: 12, fontWeight: 400, color: colors.gray }}> km/L</span>
+            </div>
+          ) : (
+            <div style={{ fontSize: 20, color: colors.gray, lineHeight: 1 }}>—</div>
           )}
+          <div style={{ fontSize: 10, color: colors.gray }}>平均</div>
         </div>
-        <Btn danger onClick={onConfirm}>
-          削除する
-        </Btn>
-        <Btn secondary onClick={onCancel}>
-          キャンセル
-        </Btn>
       </div>
     </div>
   );
 }
 
-function ChartLegend({
-  catalogH,
-  avgH,
-}: {
-  catalogH: number;
-  avgH: number | null;
-}) {
-  return (
-    <div style={{ display: "flex", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
-      {[
-        { label: "実測値", type: "dot" as const, clr: colors.red },
-        { label: "参考値（推定）", type: "dot" as const, clr: colors.gray },
-        ...(avgH != null
-          ? [{ label: `avg(H) (${avgH})`, type: "line" as const, clr: colors.green }]
-          : []),
-        {
-          label: `カタログ値 (${catalogH})`,
-          type: "line" as const,
-          clr: colors.blue,
-        },
-      ].map(({ label, type, clr }) => (
-        <div
-          key={label}
-          style={{ display: "flex", alignItems: "center", gap: 4 }}
-        >
-          {type === "line" ? (
-            <div
-              style={{
-                width: 16,
-                height: 2,
-                background: clr,
-              }}
-            />
-          ) : (
-            <div
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: clr,
-              }}
-            />
-          )}
-          <span style={{ fontSize: 10, color: colors.gray }}>{label}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function FuelBreakdown({
-  history,
-  initOdo,
+// Honda Go style history card
+function HistoryCard({
+  entry,
+  prevOdo,
+  onEdit,
   onDelete,
 }: {
-  history: HistoryEntry[];
-  initOdo: number;
-  onDelete: (id: number) => void;
+  entry: HistoryEntry;
+  prevOdo: number;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
+  const deltaOdo = entry.odo - prevOdo;
+  // Show full datetime: "2026/02/28 14:30"
+  const dateStr = entry.date;
+
   return (
-    <div style={{ marginTop: 16 }}>
-      <div
-        style={{
-          fontSize: 13,
-          fontWeight: 700,
-          color: colors.dark,
-          marginBottom: 8,
-        }}
-      >
-        1区間あたりの燃費
+    <div 
+      onClick={onEdit}
+      style={{
+        background: colors.white,
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 12,
+        position: 'relative',
+        cursor: 'pointer',
+        transition: 'transform 0.1s',
+      }}
+    >
+      {/* Date header */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 12,
+      }}>
+        <div style={{
+          width: 32,
+          height: 32,
+          borderRadius: '50%',
+          background: colors.dark,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <span style={{ fontSize: 14 }}>⛽</span>
+        </div>
+        <span style={{ fontSize: 13, color: colors.dark }}>{dateStr}</span>
+        {!entry.isFullTank && !entry.skipCalculation && (
+          <span style={{
+            fontSize: 10,
+            background: colors.blueBg,
+            color: colors.blue,
+            padding: '2px 6px',
+            borderRadius: 8,
+          }}>
+            部分
+          </span>
+        )}
+        {entry.skipCalculation && (
+          <span style={{
+            fontSize: 10,
+            background: '#FFEBEE',
+            color: '#D32F2F',
+            padding: '2px 6px',
+            borderRadius: 8,
+          }}>
+            記録忘れ
+          </span>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          style={{
+            marginLeft: 'auto',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: colors.gray,
+            fontSize: 14,
+          }}
+        >
+          ✕
+        </button>
       </div>
-      {history
-        .slice()
-        .reverse()
-        .map((r, ri) => {
-          const origIdx = history.length - 1 - ri;
-          const prevOdo = origIdx > 0 ? history[origIdx - 1].odo : initOdo;
-          const deltaOdo = r.odo - prevOdo;
+
+      {/* Data row */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'flex-end',
+        justifyContent: 'space-between',
+        gap: 16,
+      }}>
+        {/* Left: distance & fuel */}
+        <div style={{ display: 'flex', gap: 20 }}>
+          <div>
+            <div style={{ fontSize: 10, color: colors.gray }}>走行</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: colors.dark, lineHeight: 1.2 }}>
+              {deltaOdo}<span style={{ fontSize: 11, fontWeight: 400, color: colors.gray }}> km</span>
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: colors.gray }}>給油</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: colors.dark, lineHeight: 1.2 }}>
+              {entry.fuel.toFixed(1)}<span style={{ fontSize: 11, fontWeight: 400, color: colors.gray }}> L</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: kmpl */}
+        <div style={{ textAlign: 'right' }}>
+          {entry.kmpl != null ? (
+            <div style={{ fontSize: 28, fontWeight: 700, color: colors.red, lineHeight: 1 }}>
+              {entry.kmpl.toFixed(1)}
+              <span style={{ fontSize: 12, fontWeight: 400, color: colors.gray }}> km/L</span>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 22, color: colors.gray, lineHeight: 1 }}>—</div>
+              {!entry.skipCalculation && !entry.isFullTank && (
+                <div style={{ fontSize: 9, color: colors.gray }}>次回満タンで計算</div>
+              )}
+              {entry.skipCalculation && (
+                <div style={{ fontSize: 9, color: '#D32F2F' }}>基準リセット</div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Subtle ODO */}
+      <div style={{ fontSize: 10, color: colors.gray, marginTop: 8, textAlign: 'right' }}>
+        ODO {entry.odo.toLocaleString()} km
+      </div>
+    </div>
+  );
+}
+
+// Recharts fuel efficiency chart
+function FuelChart({
+  history,
+  avgH,
+}: {
+  history: HistoryEntry[];
+  avgH: number | null;
+}) {
+  const validKmplValues = history.filter(h => h.kmpl != null).map(h => h.kmpl as number);
+  const chartAvg = avgH ?? (validKmplValues.length ? validKmplValues.reduce((a, b) => a + b, 0) / validKmplValues.length : 40);
+  
+  // Map history to chart data
+  const data = history.map((h) => ({
+    name: h.date.slice(5, 10), // "02/28" for X-axis
+    fullDate: h.date.slice(5), // "02/28 14:30" for tooltip
+    kmpl: h.kmpl,
+    type: h.skipCalculation ? 'missed' : (!h.isFullTank ? 'partial' : 'full'),
+  }));
+
+  const hasSpecial = data.some(d => d.type !== 'full');
+
+  if (data.length < 2) {
+  return (
+      <div style={{ textAlign: 'center', color: colors.gray, fontSize: 13, padding: '30px 0' }}>
+        2回以上記録するとグラフが表示されます
+      </div>
+    );
+  }
+
+  // Y-axis: reasonable range
+  const maxKmpl = Math.max(...validKmplValues, chartAvg);
+  const maxY = Math.ceil(maxKmpl / 10) * 10 + 10;
+
+
+  // Custom X-axis tick with symbols for 部分/忘れ
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const renderXTick = (props: any) => {
+    const { x, y, payload } = props;
+    const item = data.find(d => d.name === payload.value);
+    if (!item) return null;
+    
+    const isPartial = item.type === 'partial';
+    const isMissed = item.type === 'missed';
+    
           return (
-            <div
-              key={r.id}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "8px 0",
-                borderBottom: `1px solid ${colors.light}`,
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, color: colors.dark }}>
-                  {r.date.slice(5, 10).replace("/", "月") + "日"}
-                  {r.isEstimated && (
-                    <span
-                      style={{
-                        color: colors.gray,
-                        fontSize: 11,
-                        marginLeft: 4,
-                      }}
-                    >
-                      推定
-                    </span>
+      <g transform={`translate(${x},${y})`}>
+        <text 
+          x={0} 
+          y={0} 
+          dy={12} 
+          textAnchor="middle" 
+          fill={colors.gray} 
+          fontSize={10}
+        >
+          {item.name}
+        </text>
+        {isPartial && (
+          <circle cx={0} cy={22} r={4} fill="none" stroke={colors.blue} strokeWidth={2} />
+        )}
+        {isMissed && (
+          <g>
+            <line x1={-4} y1={18} x2={4} y2={26} stroke={colors.warn} strokeWidth={2} />
+            <line x1={4} y1={18} x2={-4} y2={26} stroke={colors.warn} strokeWidth={2} />
+          </g>
+        )}
+      </g>
+    );
+  };
+
+  return (
+    <div>
+      <ResponsiveContainer width="100%" height={hasSpecial ? 200 : 160}>
+        <LineChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: hasSpecial ? 35 : 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={colors.light} />
+          <XAxis 
+            dataKey="name" 
+            tick={renderXTick}
+            tickLine={false}
+            interval={0}
+          />
+          <YAxis domain={[0, maxY]} tick={{ fontSize: 10, fill: colors.gray }} />
+          <Tooltip
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const d = payload[0].payload;
+              return (
+                <div style={{ 
+                  background: colors.white, 
+                  padding: '8px 12px', 
+                  borderRadius: 8,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                  fontSize: 12,
+                }}>
+                  <div style={{ color: colors.gray, marginBottom: 4 }}>{d.fullDate}</div>
+                  {d.type === 'partial' ? (
+                    <div style={{ color: colors.blue, fontWeight: 600 }}>部分給油</div>
+                  ) : d.type === 'missed' ? (
+                    <div style={{ color: colors.warn, fontWeight: 600 }}>記録忘れ</div>
+                  ) : (
+                    <div style={{ color: colors.red, fontWeight: 600 }}>{d.kmpl?.toFixed(1)} km/L</div>
                   )}
                 </div>
-                <div style={{ fontSize: 11, color: colors.gray, marginTop: 2 }}>
-                  ΔODO {deltaOdo} km ÷ {r.fuel.toFixed(2)} L
-                </div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ textAlign: "right" }}>
-                  <div
-                    style={{
-                      fontSize: 18,
-                      fontWeight: 700,
-                      color: r.isEstimated ? colors.gray : colors.red,
-                    }}
-                  >
-                    {r.kmpl != null ? r.kmpl.toFixed(1) : "--"}
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 400,
-                        color: colors.gray,
-                        marginLeft: 2,
-                      }}
-                    >
-                      km/L
-                    </span>
+              );
+            }}
+          />
+          {avgH != null && (
+            <ReferenceLine y={avgH} stroke={colors.green} strokeDasharray="4 4" label={{ value: `avg: ${avgH}`, fontSize: 10, fill: colors.green }} />
+          )}
+          {/* Line with dots for 満タン points only */}
+          <Line
+            type="monotone"
+            dataKey="kmpl"
+            stroke={colors.red}
+            strokeWidth={2}
+            dot={{ r: 4, fill: colors.red }}
+            connectNulls={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+
+      {/* Legend */}
+      {hasSpecial && (
+        <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: colors.red, display: 'inline-block' }} />
+            <span style={{ color: colors.gray }}>満タン</span>
                   </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+            <span style={{ 
+              width: 10, 
+              height: 10, 
+              borderRadius: '50%', 
+              border: `2px solid ${colors.blue}`, 
+              display: 'inline-block',
+              boxSizing: 'border-box',
+            }} />
+            <span style={{ color: colors.gray }}>部分給油</span>
                 </div>
-                <button
-                  onClick={() => onDelete(r.id)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    color: colors.gray,
-                    fontSize: 16,
-                    padding: 4,
-                  }}
-                >
-                  🗑
-                </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+            <span style={{ color: colors.warn, fontWeight: 700, fontSize: 12 }}>✕</span>
+            <span style={{ color: colors.gray }}>記録忘れ</span>
               </div>
             </div>
-          );
-        })}
+      )}
     </div>
   );
 }
 
-function ScenarioDataTable({ scenario, catalogH }: { scenario: DemoScenario; catalogH: number }) {
-  const { initOdo, history } = makeDemoData(scenario, catalogH);
-  const totalFuel = history.reduce((s, e) => s + e.fuel, 0);
-  const avgH = (history[history.length - 1].odo - initOdo) / totalFuel;
+// Monthly bar chart (for 3m+ view)
+function MonthlyChart({
+  monthlyData,
+  avgH,
+  onClickMonth,
+}: {
+  monthlyData: MonthlyData[];
+  avgH: number | null;
+  onClickMonth: (month: string) => void;
+}) {
+  // Check if data spans multiple years
+  const years = new Set(monthlyData.map(m => m.month.slice(0, 4)));
+  const showYear = years.size > 1;
+
+  const data = monthlyData.map((m, i) => {
+    const year = m.month.slice(2, 4); // "25" or "26"
+    const monthNum = parseInt(m.month.slice(5));
+    // Only show year on first item or when year changes
+    const prevYear = i > 0 ? monthlyData[i - 1].month.slice(0, 4) : null;
+    const yearChanged = prevYear !== m.month.slice(0, 4);
+    const needYear = showYear && (i === 0 || yearChanged);
+    return {
+      name: needYear ? `${monthNum}月'${year}` : `${monthNum}月`,
+      month: m.month,
+      kmpl: m.avgKmpl,
+    };
+  });
+
+  const validKmpl = data.filter(d => d.kmpl != null).map(d => d.kmpl as number);
+
+  if (data.length === 0 || validKmpl.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', color: colors.gray, fontSize: 13, padding: '30px 0' }}>
+        データがありません
+      </div>
+    );
+  }
+
+  // Y-axis: start from 0 or reasonable minimum
+  const maxY = Math.ceil(Math.max(...validKmpl) / 5) * 5 + 5; // Round up to nearest 5
 
   return (
-    <div style={{ marginTop: 12, overflowX: "auto" }}>
-      <table style={{ width: "100%", fontSize: 10, borderCollapse: "collapse", color: colors.dark }}>
-        <thead>
-          <tr style={{ borderBottom: `2px solid ${colors.light}` }}>
-            {["日付", "ODO", "ΔODO", "L", "H", "種別"].map((h) => (
-              <th key={h} style={{ padding: "4px 3px", textAlign: "right", fontWeight: 700, color: colors.gray }}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          <tr style={{ borderBottom: `1px solid ${colors.light}`, color: colors.gray }}>
-            <td style={{ padding: "3px" }}>initial</td>
-            <td style={{ padding: "3px", textAlign: "right" }}>{initOdo}</td>
-            <td colSpan={4} style={{ padding: "3px", textAlign: "right", fontSize: 9 }}>
-              カタログ={catalogH}
-            </td>
-          </tr>
-          {history.map((r, i) => {
-            const prevOdo = i > 0 ? history[i - 1].odo : initOdo;
-            const delta = r.odo - prevOdo;
+    <ResponsiveContainer width="100%" height={160}>
+      <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke={colors.light} vertical={false} />
+        <XAxis 
+          dataKey="name" 
+          tick={{ fontSize: 9, fill: colors.dark }}
+          tickLine={false}
+          axisLine={false}
+          interval={0}
+        />
+        <YAxis domain={[0, maxY]} tick={{ fontSize: 10, fill: colors.gray }} axisLine={false} />
+        <Tooltip
+          content={({ active, payload }) => {
+            if (!active || !payload?.length) return null;
+            const d = payload[0].payload;
             return (
-              <tr
-                key={r.id}
-                style={{
-                  borderBottom: `1px solid ${colors.light}`,
-                  background: r.isEstimated ? "#F3F8FF" : "transparent",
-                }}
-              >
-                <td style={{ padding: "3px", whiteSpace: "nowrap" }}>{r.date.slice(5, 10)}</td>
-                <td style={{ padding: "3px", textAlign: "right" }}>{r.odo}</td>
-                <td style={{ padding: "3px", textAlign: "right" }}>{delta}</td>
-                <td style={{ padding: "3px", textAlign: "right", color: r.isEstimated ? colors.gray : "inherit" }}>
-                  {r.fuel.toFixed(2)}
-                </td>
-                <td style={{ padding: "3px", textAlign: "right", fontWeight: 700 }}>
-                  {r.kmpl != null ? r.kmpl.toFixed(2) : "--"}
-                </td>
-                <td style={{ padding: "3px", textAlign: "right", fontSize: 9 }}>
-                  {r.isEstimated ? "推定" : "実測"}
-                </td>
-              </tr>
+              <div style={{ 
+                background: colors.white, 
+                padding: '8px 12px', 
+                borderRadius: 8,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                fontSize: 12,
+              }}>
+                <div style={{ color: colors.gray, marginBottom: 4 }}>{d.name}</div>
+                {d.kmpl != null ? (
+                  <div style={{ color: colors.red, fontWeight: 600 }}>{d.kmpl} km/L</div>
+                ) : (
+                  <div style={{ color: colors.gray }}>—</div>
+                )}
+              </div>
             );
-          })}
-        </tbody>
-      </table>
-      <div style={{ fontSize: 10, color: colors.green, fontWeight: 700, marginTop: 6, textAlign: "right" }}>
-        avg(H) = ({history[history.length - 1].odo}−{initOdo}) ÷ {totalFuel.toFixed(2)} = {avgH.toFixed(2)} km/L
-      </div>
-    </div>
+          }}
+        />
+        {avgH != null && (
+          <ReferenceLine y={avgH} stroke={colors.green} strokeDasharray="4 4" label={{ value: `avg`, fontSize: 10, fill: colors.green }} />
+        )}
+        <Bar 
+          dataKey="kmpl" 
+          fill={colors.red} 
+          radius={[4, 4, 0, 0]}
+          onClick={(d) => onClickMonth((d as unknown as { month: string }).month)}
+          style={{ cursor: 'pointer' }}
+        />
+      </BarChart>
+    </ResponsiveContainer>
   );
 }
 
+// Scenario selector modal
 function ScenarioModal({
   active,
   catalogH,
@@ -318,25 +520,34 @@ function ScenarioModal({
   onClose: () => void;
 }) {
   return (
-    <div
-      style={{
-        position: "fixed",
+    <div style={{
+      position: 'fixed',
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+      background: 'rgba(0,0,0,0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
         zIndex: 100,
-      }}
-    >
-      <div style={{ background: colors.white, borderRadius: 12, padding: 24, margin: 20, maxWidth: 360, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+    }}>
+      <div style={{
+        background: colors.white,
+        borderRadius: 12,
+        padding: 24,
+        margin: 20,
+        maxWidth: 360,
+        width: '100%',
+      }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: colors.dark, marginBottom: 16 }}>
           📊 デモデータ切替
         </div>
-        {DEMO_SCENARIOS.map(({ id, label, desc }) => (
+        {DEMO_SCENARIOS.map(({ id, label, desc }) => {
+          const { history } = makeDemoData(id, catalogH);
+          const example = history.map(h => h.kmpl != null ? h.kmpl.toFixed(0) : '—').join(' → ');
+          
+          return (
           <div
             key={id}
             onClick={() => onSelect(id)}
@@ -344,18 +555,21 @@ function ScenarioModal({
               padding: 14,
               borderRadius: 8,
               marginBottom: 8,
-              cursor: "pointer",
+                cursor: 'pointer',
               border: `2px solid ${active === id ? colors.red : colors.light}`,
-              background: active === id ? "#FFF0F0" : colors.white,
+                background: active === id ? '#FFF0F0' : colors.white,
             }}
           >
             <div style={{ fontWeight: 700, fontSize: 14, color: active === id ? colors.red : colors.dark }}>
               {label}
             </div>
             <div style={{ fontSize: 12, color: colors.gray, marginTop: 4 }}>{desc}</div>
-            {active === id && <ScenarioDataTable scenario={id} catalogH={catalogH} />}
+              <div style={{ fontSize: 11, color: colors.blue, marginTop: 4 }}>
+                燃費: {example}
+              </div>
           </div>
-        ))}
+          );
+        })}
         <div style={{ marginTop: 8 }}>
           <Btn secondary onClick={onClose}>閉じる</Btn>
         </div>
@@ -364,114 +578,157 @@ function ScenarioModal({
   );
 }
 
-function MonthlyBreakdown({
-  months,
-  onDelete,
+// Delete confirmation modal
+function DeleteModal({
+  onConfirm,
+  onCancel,
 }: {
-  months: [string, HistoryEntry[]][];
-  onDelete: (id: number) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
 }) {
   return (
-    <div style={{ marginTop: 16 }}>
-      {months
-        .slice()
-        .reverse()
-        .map(([key, recs]) => (
-          <div key={key} style={{ marginBottom: 12 }}>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: colors.gray,
-                marginBottom: 6,
-              }}
-            >
-              {key.slice(0, 4)}年{key.slice(5)}月
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'rgba(0,0,0,0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 100,
+    }}>
+      <div style={{
+        background: colors.white,
+        borderRadius: 12,
+        padding: 24,
+        margin: 20,
+        maxWidth: 320,
+      }}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: colors.dark, marginBottom: 12 }}>
+          記録を削除しますか？
             </div>
-            {recs.map((r) => (
-              <div
-                key={r.id}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 0",
-                  borderBottom: `1px solid ${colors.light}`,
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: 13, color: colors.dark }}>
-                    {r.date.slice(5, 10).replace("/", "月") + "日"}{" "}
-                    {r.date.slice(11)}
+        <div style={{ fontSize: 14, color: colors.gray, lineHeight: 1.6, marginBottom: 16 }}>
+          最新の給油記録を削除します。
                   </div>
-                  <div style={{ fontSize: 11, color: colors.gray }}>
-                    {r.fuel?.toFixed(1)} L {r.isEstimated ? "⚪ 参考値" : ""}
-                    {r.flagged ? "⚠️ ODOのみ" : ""}
+        <Btn danger onClick={onConfirm}>削除する</Btn>
+        <div style={{ marginTop: 8 }}>
+          <Btn secondary onClick={onCancel}>キャンセル</Btn>
                   </div>
                 </div>
-                <div
-                  style={{
-                    textAlign: "right",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                >
-                  <div>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 700,
-                        color: colors.dark,
-                      }}
-                    >
-                      ¥{Math.round(r.amount || 0).toLocaleString()}
                     </div>
-                    {r.kmpl != null && (
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: colors.gray,
-                        }}
-                      >
-                        {r.kmpl.toFixed(1)} km/L
-                      </div>
-                    )}
-                  </div>
+  );
+}
+
+type FilterPeriod = '1m' | '3m' | '6m' | '1y';
+
+// Filter buttons component
+function PeriodFilter({ active, onChange }: { active: FilterPeriod; onChange: (p: FilterPeriod) => void }) {
+  const options: { key: FilterPeriod; label: string }[] = [
+    { key: '1m', label: '1ヶ月' },
+    { key: '3m', label: '3ヶ月' },
+    { key: '6m', label: '6ヶ月' },
+    { key: '1y', label: '1年' },
+  ];
+  return (
+    <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+      {options.map(o => (
                   <button
-                    onClick={() => onDelete(r.id)}
+          key={o.key}
+          onClick={() => onChange(o.key)}
                     style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      color: colors.gray,
-                      fontSize: 16,
-                      padding: 4,
+            flex: 1,
+            padding: '8px 0',
+            border: 'none',
+            borderRadius: 8,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+            background: active === o.key ? colors.red : colors.light,
+            color: active === o.key ? colors.white : colors.gray,
+            transition: 'all 0.2s',
                     }}
                   >
-                    🗑
+          {o.label}
                   </button>
-                </div>
-              </div>
-            ))}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                padding: "6px 0",
-              }}
-            >
-              <div style={{ fontSize: 13, fontWeight: 700, color: colors.red }}>
-                月計 ¥
-                {Math.round(
-                  recs.reduce((s, r) => s + (r.amount || 0), 0),
-                ).toLocaleString()}
-              </div>
-            </div>
-          </div>
         ))}
     </div>
   );
+}
+
+// Helper: get months count from period
+function getPeriodMonths(period: FilterPeriod): number {
+  switch (period) {
+    case '1m': return 1;
+    case '3m': return 3;
+    case '6m': return 6;
+    case '1y': return 12;
+  }
+}
+
+// Helper: filter history by period
+function filterByPeriod(history: HistoryEntry[], period: FilterPeriod): HistoryEntry[] {
+  const months = getPeriodMonths(period);
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - months);
+  return history.filter(h => parseDate(h.date) >= cutoff);
+}
+
+// Helper: aggregate history by month
+interface MonthlyData {
+  month: string; // "2026/02"
+  label: string; // "2月"
+  avgKmpl: number | null;
+  totalFuel: number;
+  totalDistance: number;
+  count: number;
+  hasPartial: boolean;
+  hasMissed: boolean;
+  entries: HistoryEntry[];
+}
+
+function aggregateByMonth(history: HistoryEntry[], initOdo: number): MonthlyData[] {
+  const groups: Record<string, HistoryEntry[]> = {};
+  
+  for (const entry of history) {
+    const month = entry.date.slice(0, 7); // "2026/02"
+    if (!groups[month]) groups[month] = [];
+    groups[month].push(entry);
+  }
+
+  const result: MonthlyData[] = [];
+  const sortedMonths = Object.keys(groups).sort();
+
+  for (const month of sortedMonths) {
+    const entries = groups[month];
+    const validKmpl = entries.filter(e => e.kmpl != null).map(e => e.kmpl as number);
+    const avgKmpl = validKmpl.length > 0 
+      ? parseFloat((validKmpl.reduce((a, b) => a + b, 0) / validKmpl.length).toFixed(1))
+      : null;
+
+    // Calculate total distance for this month
+    const firstEntry = entries[0];
+    const lastEntry = entries[entries.length - 1];
+    const prevOdo = history.indexOf(firstEntry) > 0 
+      ? history[history.indexOf(firstEntry) - 1].odo 
+      : initOdo;
+    const totalDistance = lastEntry.odo - prevOdo;
+
+    result.push({
+      month,
+      label: `${parseInt(month.slice(5))}月`,
+      avgKmpl,
+      totalFuel: entries.reduce((sum, e) => sum + e.fuel, 0),
+      totalDistance,
+      count: entries.length,
+      hasPartial: entries.some(e => !e.isFullTank && !e.skipCalculation),
+      hasMissed: entries.some(e => e.skipCalculation),
+      entries,
+    });
+  }
+
+  return result;
 }
 
 export function Dashboard({
@@ -482,241 +739,169 @@ export function Dashboard({
   activeScenario,
   onRecord,
   onDelete,
+  onEdit,
   onChangeScenario,
 }: DashboardProps) {
-  const [tab, setTab] = useState("燃費");
-  const [confirmDelete, setConfirmDelete] = useState<{
-    id: number;
-    isLatest: boolean;
-  } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const [showScenario, setShowScenario] = useState(false);
+  const [period, setPeriod] = useState<FilterPeriod>('1m');
+  const [drillMonth, setDrillMonth] = useState<string | null>(null); // For drill-down
+  
+  // Check if record is latest (no confirm needed for delete)
+  const isLatestRecord = (id: number) => history.length > 0 && history[history.length - 1].id === id;
 
   const avgH = calcAvgH(history, initOdo);
-  const totalCost = history.reduce((s, h) => s + (h.amount || 0), 0);
-  const months = groupByMonth(history);
+  const monthlyH = calcMonthlyAvgH(history);
 
-  const catalogStatus =
-    avgH != null && catalogH
-      ? avgH >= catalogH
-        ? {
-            msg: "お客様のバイクは非常に効率よく走れています！🎉",
-            color: colors.green,
-            bg: colors.greenBg,
-          }
-        : {
-            msg: "最近燃費が低下しています。メンテナンスをお勧めします",
-            color: "#E65100",
-            bg: colors.warnBg,
-          }
-      : null;
+  // Filter data by period
+  const filteredHistory = filterByPeriod(history, period);
+  const monthlyData = aggregateByMonth(filteredHistory, initOdo);
+
+  // Determine view mode
+  const isMonthlyView = period !== '1m' && !drillMonth;
+  const isDrillView = drillMonth != null;
+
+  // Get drill-down data
+  const drillData = isDrillView 
+    ? monthlyData.find(m => m.month === drillMonth)?.entries ?? []
+    : [];
 
   const handleDelete = (id: number) => {
-    const idx = history.findIndex((h) => h.id === id);
-    setConfirmDelete({ id, isLatest: idx === history.length - 1 });
+    if (isLatestRecord(id)) {
+      // Delete latest record directly, no confirmation needed
+      onDelete(id);
+    } else {
+      // Show confirmation modal for non-latest records
+      setConfirmDelete(id);
+    }
   };
 
   return (
     <>
-    <Shell title={`${bikeName} 燃費記録`}>
-      {confirmDelete && (
+      <Shell title={bikeName}>
+        {confirmDelete != null && (
         <DeleteModal
-          isLatest={confirmDelete.isLatest}
           onConfirm={() => {
-            onDelete(confirmDelete.id);
+              onDelete(confirmDelete);
             setConfirmDelete(null);
           }}
           onCancel={() => setConfirmDelete(null)}
         />
       )}
 
-      <div
-        style={{
-          background: colors.red,
-          borderRadius: 12,
-          padding: 20,
-          marginBottom: 12,
-          color: colors.white,
-          textAlign: "center",
-        }}
-      >
-        <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 4 }}>
-          累積平均燃費 avg(H)
-        </div>
-        <div style={{ fontSize: 48, fontWeight: 700, lineHeight: 1 }}>
-          {avgH ?? "--"}
-        </div>
-        <div style={{ fontSize: 14, opacity: 0.85 }}>km/L</div>
-        {catalogH && (
-          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-            カタログ値：{catalogH} km/L
-          </div>
-        )}
-      </div>
+        {/* Honda Go style header */}
+        <FuelHeader monthlyH={monthlyH} avgH={avgH} />
 
-      {catalogStatus && (
-        <div
-          style={{
-            background: catalogStatus.bg,
-            borderRadius: 10,
-            padding: "12px 16px",
-            marginBottom: 12,
-            fontSize: 13,
-            color: catalogStatus.color,
-            fontWeight: 600,
-          }}
-        >
-          {catalogStatus.msg}
-        </div>
-      )}
+        {/* Period filter */}
+        <PeriodFilter active={period} onChange={(p) => { setPeriod(p); setDrillMonth(null); }} />
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 10,
-          marginBottom: 16,
-        }}
-      >
-        {[
-          ["給油回数", `${history.length} 回`],
-          ["累計費用", `¥${Math.round(totalCost).toLocaleString()}`],
-        ].map(([label, val]) => (
-          <div
-            key={label}
+        {/* Drill-down back button */}
+        {isDrillView && (
+          <button
+            onClick={() => setDrillMonth(null)}
             style={{
-              background: colors.white,
-              borderRadius: 10,
-              padding: 16,
-              textAlign: "center",
-            }}
-          >
-            <div style={{ fontSize: 12, color: colors.gray }}>{label}</div>
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 700,
-                color: colors.dark,
-                marginTop: 4,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              background: 'none',
+              border: 'none',
+              color: colors.red,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              marginBottom: 12,
+              padding: 0,
               }}
             >
-              {val}
-            </div>
-          </div>
-        ))}
-      </div>
+            ← {monthlyData.find(m => m.month === drillMonth)?.label}の詳細
+          </button>
+        )}
 
-      <div
-        style={{
+        {/* Chart */}
+        <div style={{
           background: colors.white,
-          borderRadius: 10,
+          borderRadius: 12,
           padding: 16,
           marginBottom: 16,
-        }}
-      >
-        <TabBar tabs={["燃費", "費用"]} active={tab} onChange={setTab} />
-        {tab === "燃費" && (
-          <>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                color: colors.dark,
-                marginBottom: 4,
-              }}
-            >
-              燃費推移（km/L）
+        }}>
+          {isMonthlyView ? (
+            <MonthlyChart monthlyData={monthlyData} avgH={avgH} onClickMonth={setDrillMonth} />
+          ) : (
+            <FuelChart history={isDrillView ? drillData : filteredHistory} avgH={avgH} />
+          )}
             </div>
-            <LineChart
-              data={history}
-              valueKey="kmpl"
-              color={colors.red}
-              catalogH={catalogH}
-              initOdo={initOdo}
-            />
-            {months.length > 1 && (
-              <>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: colors.gray,
-                    margin: "12px 0 4px",
-                  }}
-                >
-                  月別平均
-                </div>
-                <MonthBarChart
-                  months={months}
-                  valueKey="kmpl"
-                  color={colors.red}
-                />
-              </>
-            )}
-            <ChartLegend catalogH={catalogH} avgH={avgH} />
-            <FuelBreakdown
-              history={history}
-              initOdo={initOdo}
-              onDelete={handleDelete}
-            />
-          </>
-        )}
-        {tab === "費用" && (
-          <>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                color: colors.dark,
-                marginBottom: 4,
-              }}
-            >
-              支払金額の推移（円）
-            </div>
-            <LineChart data={history} valueKey="amount" color={colors.red} />
-            {months.length > 1 && (
-              <>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: colors.gray,
-                    margin: "12px 0 4px",
-                  }}
-                >
-                  月別合計
-                </div>
-                <MonthBarChart
-                  months={months}
-                  valueKey="amount"
-                  color={colors.red}
-                />
-              </>
-            )}
-            <MonthlyBreakdown months={months} onDelete={handleDelete} />
-          </>
-        )}
-      </div>
 
-      <Btn onClick={onRecord}>＋ 給油を記録する</Btn>
+        {/* History list */}
+        <div style={{ marginBottom: 80 }}>
+          {isMonthlyView ? (
+            // Monthly cards
+            monthlyData.slice().reverse().map(m => (
+              <MonthlyCard key={m.month} data={m} onClick={() => setDrillMonth(m.month)} />
+            ))
+          ) : (
+            // Daily cards
+            (isDrillView ? drillData : filteredHistory)
+              .slice()
+              .reverse()
+              .map((entry, ri) => {
+                const dataSource = isDrillView ? drillData : filteredHistory;
+                const origIdx = dataSource.length - 1 - ri;
+                // Find prevOdo from original history, not filtered
+                let prevOdo = initOdo;
+                if (origIdx > 0) {
+                  prevOdo = dataSource[origIdx - 1].odo;
+                } else {
+                  // First item in filtered list - find prev from original history
+                  const originalIdx = history.findIndex(h => h.id === entry.id);
+                  prevOdo = originalIdx > 0 ? history[originalIdx - 1].odo : initOdo;
+                }
+                return (
+                  <HistoryCard
+                    key={entry.id}
+                    entry={entry}
+                    prevOdo={prevOdo}
+                    onEdit={() => onEdit(entry)}
+                    onDelete={() => handleDelete(entry.id)}
+                  />
+                );
+              })
+          )}
+            </div>
+
+        {/* Fixed bottom button */}
+        <div style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          padding: 16,
+          background: 'linear-gradient(transparent, white 30%)',
+        }}>
+          <div style={{ maxWidth: 375, margin: '0 auto' }}>
+            <Btn onClick={onRecord}>＋ 給油を記録する</Btn>
+                </div>
+      </div>
     </Shell>
 
-    {/* Floating demo button — outside Shell to avoid overflow clipping */}
+      {/* Floating demo button */}
     <button
       onClick={() => setShowScenario(true)}
       style={{
-        position: "fixed",
-        bottom: 24,
+          position: 'fixed',
+          bottom: 80,
         right: 24,
         width: 48,
         height: 48,
-        borderRadius: "50%",
+          borderRadius: '50%',
         background: colors.dark,
         color: colors.white,
-        border: "none",
-        cursor: "pointer",
+          border: 'none',
+          cursor: 'pointer',
         fontSize: 20,
-        boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
         zIndex: 50,
       }}
     >
@@ -727,7 +912,10 @@ export function Dashboard({
       <ScenarioModal
         active={activeScenario}
         catalogH={catalogH}
-        onSelect={(s) => { onChangeScenario(s); setShowScenario(false); }}
+          onSelect={(s) => {
+            onChangeScenario(s);
+            setShowScenario(false);
+          }}
         onClose={() => setShowScenario(false)}
       />
     )}
